@@ -1,26 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import { 
   Trophy, Mic, LogOut, CheckCircle, Sparkles, 
-  ChevronRight, Activity, Flame
+  ChevronRight, Activity, Flame, Shield, Zap
 } from 'lucide-react';
 import { GoogleGenAI, Modality, Blob, LiveServerMessage } from "@google/genai";
 
-// 1. ROBUST ENVIRONMENT POLYFILL
-// We must ensure 'process.env' is available globally for @google/genai before it's called.
+/**
+ * 1. ENVIRONMENT & STORAGE
+ */
 if (typeof window !== 'undefined') {
   (window as any).process = (window as any).process || { env: {} };
-  // Vercel or local environment variable access
-  (window as any).process.env.API_KEY = (window as any).process.env.API_KEY || (window as any).API_KEY || '';
 }
 
-const STORAGE_KEYS = { USERS: 'lords_lab_v7_data' };
+const STORAGE_KEYS = { USERS: 'lords_lab_v8_prod' };
 const getStorage = (k: string) => {
-  try { return JSON.parse(localStorage.getItem(k) || '[]'); } catch { return []; }
+  try {
+    const data = localStorage.getItem(k);
+    return data ? JSON.parse(data) : [];
+  } catch { return []; }
 };
 const saveStorage = (k: string, v: any) => localStorage.setItem(k, JSON.stringify(v));
 
-// 2. AI VOICE ENGINE (GEMINI LIVE)
+/**
+ * 2. AI VOICE ENGINE
+ */
 let nextStartTime = 0;
 let inputAudioContext: AudioContext | null = null;
 let outputAudioContext: AudioContext | null = null;
@@ -48,8 +52,8 @@ const decodePCM = async (base64: string, ctx: AudioContext) => {
 };
 
 const startVoiceLab = async (onTranscription: (text: string, isUser: boolean) => void, onEnd: (err?: string) => void) => {
-  const apiKey = (window as any).process?.env?.API_KEY;
-  if (!apiKey) return onEnd("API_KEY Missing.");
+  const apiKey = (process.env as any).API_KEY;
+  if (!apiKey) return onEnd("CRITICAL: API_KEY MISSING.");
 
   const ai = new GoogleGenAI({ apiKey });
   inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
@@ -58,7 +62,7 @@ const startVoiceLab = async (onTranscription: (text: string, isUser: boolean) =>
   try {
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (e) {
-    return onEnd("Mic access denied.");
+    return onEnd("ERROR: MICROPHONE ACCESS DENIED.");
   }
 
   const sessionPromise = ai.live.connect({
@@ -66,7 +70,7 @@ const startVoiceLab = async (onTranscription: (text: string, isUser: boolean) =>
     config: {
       responseModalities: [Modality.AUDIO],
       speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Fenrir' } } },
-      systemInstruction: 'You are the Durham Lords Coach. Be intense, brief. Max 2 sentences.',
+      systemInstruction: 'You are the Durham Lords Elite Performance Coach. Be brief, intense, and use sports leadership metaphors. Max 2 sentences.',
       inputAudioTranscription: {},
       outputAudioTranscription: {},
     },
@@ -98,7 +102,7 @@ const startVoiceLab = async (onTranscription: (text: string, isUser: boolean) =>
           audioSources.add(source);
         }
       },
-      onerror: (e) => onEnd("Uplink lost."),
+      onerror: () => onEnd("UPLINK DISCONNECTED."),
       onclose: () => onEnd()
     }
   });
@@ -113,6 +117,9 @@ const stopVoiceLab = () => {
   nextStartTime = 0;
 };
 
+/**
+ * 3. UI COMPONENTS
+ */
 const Card = ({ children, className = "" }: { children: React.ReactNode, className?: string }) => (
   <div className={`glass-card rounded-[2rem] p-6 shadow-xl ${className}`}>{children}</div>
 );
@@ -126,7 +133,7 @@ const App = () => {
   const [transcripts, setTranscripts] = useState<{t: string, isU: boolean}[]>([]);
 
   useEffect(() => {
-    // Reveal app once mounted
+    // Reveal app
     const loader = document.getElementById('loading-overlay');
     if (loader) loader.style.display = 'none';
   }, []);
@@ -144,18 +151,18 @@ const App = () => {
   };
 
   const generateInsight = async () => {
-    const apiKey = (window as any).process?.env?.API_KEY;
-    if (!apiKey) { setInsight("API_KEY missing."); return; }
+    const apiKey = (process.env as any).API_KEY;
+    if (!apiKey) { setInsight("ERROR: API_KEY MISSING."); return; }
     setLoading(true);
     try {
       const ai = new GoogleGenAI({ apiKey });
       const res = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Durham Lords Athletics. Leadership tip for effort ${metrics.effort}/5. One direct sentence.`
+        contents: `Durham Lords Athletics. Leadership challenge for athlete with effort ${metrics.effort}/5. One direct sentence.`
       });
       setInsight(res.text || "Hold the standard.");
     } catch {
-      setInsight("Winning is a habit. So is losing. Choose yours.");
+      setInsight("Winning is a habit. So is losing.");
     } finally {
       setLoading(false);
     }
@@ -163,14 +170,15 @@ const App = () => {
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-100 flex flex-col max-w-md mx-auto relative overflow-hidden">
+      
       {screen === 'LOGIN' && (
-        <div className="flex-1 flex flex-col justify-center p-8 z-10 space-y-10">
+        <div className="flex-1 flex flex-col justify-center p-8 z-10 space-y-12 animate-in fade-in zoom-in duration-500">
           <div className="text-center">
             <h1 className="text-6xl font-black italic tracking-tighter text-white">LORDS<span className="text-green-500">LAB</span></h1>
             <p className="text-slate-500 font-bold uppercase tracking-[0.4em] text-[10px] mt-2">Elite Leadership Protocol</p>
           </div>
           <Card className="space-y-4">
-            <input id="ln" placeholder="Athlete Surname" className="w-full bg-slate-950/50 border border-slate-800 rounded-2xl p-5 outline-none focus:border-green-500 text-white font-bold" />
+            <input id="ln" placeholder="Athlete Surname" className="w-full bg-slate-950/50 border border-slate-800 rounded-2xl p-5 outline-none focus:border-green-500 text-white font-bold uppercase text-sm" />
             <input id="jn" placeholder="Jersey #" className="w-full bg-slate-950/50 border border-slate-800 rounded-2xl p-5 outline-none focus:border-green-500 text-white font-bold" />
             <div className="flex gap-2 p-1 bg-slate-900 rounded-2xl border border-slate-800" id="role_sel">
               <button onClick={(e) => {
@@ -178,13 +186,13 @@ const App = () => {
                 Array.from(p.children).forEach(c => c.classList.remove('bg-green-600', 'text-white'));
                 e.currentTarget.classList.add('bg-green-600', 'text-white');
                 p.dataset.role = 'ATHLETE';
-              }} className="flex-1 py-3 rounded-xl text-[10px] font-black uppercase bg-green-600 text-white">Athlete</button>
+              }} className="flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all bg-green-600 text-white">Athlete</button>
               <button onClick={(e) => {
                 const p = e.currentTarget.parentElement!;
                 Array.from(p.children).forEach(c => c.classList.remove('bg-green-600', 'text-white'));
                 e.currentTarget.classList.add('bg-green-600', 'text-white');
                 p.dataset.role = 'COACH';
-              }} className="flex-1 py-3 rounded-xl text-[10px] font-black uppercase text-slate-400">Coach</button>
+              }} className="flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all text-slate-400">Coach</button>
             </div>
             <button 
               onClick={() => {
@@ -193,7 +201,7 @@ const App = () => {
                 const r = (document.getElementById('role_sel') as HTMLElement).dataset.role || 'ATHLETE';
                 if(n && j) handleLogin(n, j, r);
               }}
-              className="w-full py-5 bg-green-600 hover:bg-green-500 text-white font-black rounded-[2rem] shadow-lg neon-glow transition-all active:scale-95 mt-4 uppercase text-sm"
+              className="w-full py-5 bg-green-600 hover:bg-green-500 text-white font-black rounded-[2rem] shadow-lg neon-glow transition-all active:scale-95 mt-4 uppercase text-sm tracking-widest"
             >
               Initialize System
             </button>
@@ -202,7 +210,7 @@ const App = () => {
       )}
 
       {screen === 'ATHLETE' && user && (
-        <div className="flex-1 p-6 space-y-6 overflow-y-auto pb-32 z-10">
+        <div className="flex-1 p-6 space-y-6 overflow-y-auto pb-32 z-10 animate-in slide-in-from-right duration-300">
           <header className="flex justify-between items-center py-4">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-green-600 rounded-2xl flex items-center justify-center font-black text-white shadow-xl italic">#{user.jersey}</div>
@@ -224,7 +232,7 @@ const App = () => {
               <p className="text-lg font-bold italic leading-tight text-white border-l-2 border-green-500 pl-4 py-1">"{insight}"</p>
             ) : (
               <button onClick={generateInsight} className="w-full py-4 text-[11px] text-green-500 font-black uppercase tracking-widest bg-green-500/5 rounded-2xl border border-green-500/10 hover:bg-green-500/10 transition-all">
-                {loading ? 'Analyzing...' : 'Sync Insight'}
+                {loading ? 'Analyzing Pulse...' : 'Sync Leadership Directive'}
               </button>
             )}
           </Card>
@@ -233,21 +241,21 @@ const App = () => {
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Effort Output</span>
-                <span className="text-4xl font-black text-green-500 italic tabular-nums">{metrics.effort}</span>
+                <span className="text-4xl font-black text-green-500 italic tabular-nums">{metrics.effort}<span className="text-slate-700 text-lg">/5</span></span>
               </div>
-              <input type="range" min="1" max="5" step="0.5" value={metrics.effort} onChange={e => setMetrics({...metrics, effort: parseFloat(e.target.value)})} className="w-full accent-green-500" />
+              <input type="range" min="1" max="5" step="0.5" value={metrics.effort} onChange={e => setMetrics({...metrics, effort: parseFloat(e.target.value)})} className="w-full appearance-none h-2 bg-slate-950 rounded-full accent-green-500" />
             </div>
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Elite Attitude</span>
-                <span className="text-4xl font-black text-yellow-500 italic tabular-nums">{metrics.attitude}</span>
+                <span className="text-4xl font-black text-yellow-500 italic tabular-nums">{metrics.attitude}<span className="text-slate-700 text-lg">/5</span></span>
               </div>
-              <input type="range" min="1" max="5" step="0.5" value={metrics.attitude} onChange={e => setMetrics({...metrics, attitude: parseFloat(e.target.value)})} className="w-full accent-yellow-500" />
+              <input type="range" min="1" max="5" step="0.5" value={metrics.attitude} onChange={e => setMetrics({...metrics, attitude: parseFloat(e.target.value)})} className="w-full appearance-none h-2 bg-slate-950 rounded-full accent-yellow-500" />
             </div>
           </Card>
 
           <div className="grid grid-cols-2 gap-4">
-            <button onClick={() => alert("Locked In.")} className="h-32 bg-green-600 rounded-[2.5rem] font-black text-white flex flex-col items-center justify-center gap-2 shadow-xl neon-glow active:scale-95 transition-all">
+            <button onClick={() => alert("Daily Standard Locked.")} className="h-32 bg-green-600 rounded-[2.5rem] font-black text-white flex flex-col items-center justify-center gap-2 shadow-xl neon-glow active:scale-95 transition-all">
               <CheckCircle size={32}/>
               <span className="text-[10px] uppercase tracking-widest">Lock In</span>
             </button>
@@ -267,20 +275,21 @@ const App = () => {
       )}
 
       {screen === 'VOICE' && (
-        <div className="flex-1 bg-black flex flex-col items-center justify-center p-8 text-center space-y-12 z-20">
+        <div className="flex-1 bg-black flex flex-col items-center justify-center p-8 text-center space-y-12 z-20 animate-in zoom-in duration-500">
           <div className="relative">
             <div className="absolute inset-0 bg-green-500/10 blur-[100px] animate-pulse rounded-full"></div>
             <div className="w-56 h-56 rounded-full border border-green-500/20 flex items-center justify-center relative bg-slate-900/30">
+              <div className="absolute inset-0 border-2 border-green-500/40 rounded-full animate-ping opacity-20"></div>
               <Mic size={80} className="text-green-500 drop-shadow-[0_0_20px_rgba(34,197,94,0.6)]" />
-              <div className="absolute inset-0 border-2 border-green-500/30 rounded-full animate-ping"></div>
             </div>
           </div>
-          <div className="w-full h-32 flex flex-col justify-end gap-2 px-6">
+          <div className="w-full h-40 flex flex-col justify-end space-y-4 overflow-hidden mask-fade px-4">
             {transcripts.map((t, i) => (
-              <p key={i} className={`text-sm italic ${t.isU ? 'text-slate-600' : 'text-green-400 font-black'}`}>
+              <p key={i} className={`text-sm ${t.isU ? 'text-slate-600 font-bold' : 'text-green-400 font-black italic animate-in slide-in-from-bottom'}`}>
                 {t.isU ? 'UNIT: ' : 'COACH: '}{t.t}
               </p>
             ))}
+            {transcripts.length === 0 && <p className="text-slate-800 font-black uppercase text-[10px] animate-pulse tracking-[0.4em]">Establishing Link...</p>}
           </div>
           <button onClick={() => { stopVoiceLab(); setScreen('ATHLETE'); }} className="w-full py-6 bg-slate-900 border border-slate-800 rounded-[2rem] text-slate-400 font-black uppercase text-xs tracking-widest hover:text-white transition-all">
             Terminate Session
@@ -289,23 +298,44 @@ const App = () => {
       )}
 
       {screen === 'COACH' && (
-        <div className="flex-1 p-6 space-y-8 overflow-y-auto pb-32 z-10">
+        <div className="flex-1 p-6 space-y-8 overflow-y-auto pb-32 z-10 animate-in slide-in-from-right duration-300">
           <header className="flex justify-between items-center py-4">
             <h1 className="text-3xl font-black italic text-white uppercase tracking-tighter">COACH<span className="text-green-500">LAB</span></h1>
             <button onClick={() => setScreen('LOGIN')} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 text-slate-500"><LogOut size={18}/></button>
           </header>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <Card className="text-center py-8">
+              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Squad Pulse</p>
+              <p className="text-5xl font-black text-green-400 italic">4.9</p>
+            </Card>
+            <Card className="text-center py-8">
+              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Locked In</p>
+              <p className="text-5xl font-black text-white italic">{getStorage(STORAGE_KEYS.USERS).length}</p>
+            </Card>
+          </div>
+
           <Card className="p-0 overflow-hidden divide-y divide-slate-800/30">
+            <div className="p-6 bg-slate-900/30">
+              <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                <Trophy size={12}/> Leadership Roster
+              </h3>
+            </div>
             {getStorage(STORAGE_KEYS.USERS).map((u: any, i: number) => (
-              <div key={i} className="flex items-center justify-between p-6">
+              <div key={i} className="flex items-center justify-between p-6 hover:bg-slate-800/20 transition-colors">
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center font-black text-slate-600 border border-slate-800 italic">#{u.jersey}</div>
-                  <span className="font-bold text-lg uppercase italic">{u.name}</span>
+                  <span className="font-bold text-lg uppercase tracking-tight italic">{u.name}</span>
                 </div>
                 <div className="text-right">
                   <p className="font-black text-green-400 text-xl leading-none">{u.points}</p>
+                  <p className="text-[8px] font-bold text-slate-700 uppercase">Points</p>
                 </div>
               </div>
             ))}
+            {getStorage(STORAGE_KEYS.USERS).length === 0 && (
+              <div className="p-12 text-center text-slate-700 text-[10px] font-black uppercase tracking-widest">No Active Units</div>
+            )}
           </Card>
         </div>
       )}
@@ -313,9 +343,9 @@ const App = () => {
   );
 };
 
+// --- RENDER BOOTSTRAP ---
 const container = document.getElementById('root');
 if (container) {
   const root = createRoot(container);
   root.render(<App />);
 }
-
