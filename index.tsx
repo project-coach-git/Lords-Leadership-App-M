@@ -6,23 +6,21 @@ import {
 } from 'lucide-react';
 import { GoogleGenAI, Modality, Blob, LiveServerMessage } from "@google/genai";
 
-/**
- * 1. ENVIRONMENT & STORAGE
- */
-// Ensure process.env is safely polyfilled for the browser
+// 1. ROBUST ENVIRONMENT POLYFILL
+// We must ensure 'process.env' is available globally for @google/genai before it's called.
 if (typeof window !== 'undefined') {
   (window as any).process = (window as any).process || { env: {} };
+  // Vercel or local environment variable access
+  (window as any).process.env.API_KEY = (window as any).process.env.API_KEY || (window as any).API_KEY || '';
 }
 
-const STORAGE_KEYS = { USERS: 'lords_lab_v6_users' };
+const STORAGE_KEYS = { USERS: 'lords_lab_v7_data' };
 const getStorage = (k: string) => {
   try { return JSON.parse(localStorage.getItem(k) || '[]'); } catch { return []; }
 };
 const saveStorage = (k: string, v: any) => localStorage.setItem(k, JSON.stringify(v));
 
-/**
- * 2. AI VOICE LOGIC (GEMINI LIVE)
- */
+// 2. AI VOICE ENGINE (GEMINI LIVE)
 let nextStartTime = 0;
 let inputAudioContext: AudioContext | null = null;
 let outputAudioContext: AudioContext | null = null;
@@ -50,7 +48,7 @@ const decodePCM = async (base64: string, ctx: AudioContext) => {
 };
 
 const startVoiceLab = async (onTranscription: (text: string, isUser: boolean) => void, onEnd: (err?: string) => void) => {
-  const apiKey = (process.env as any).API_KEY;
+  const apiKey = (window as any).process?.env?.API_KEY;
   if (!apiKey) return onEnd("API_KEY Missing.");
 
   const ai = new GoogleGenAI({ apiKey });
@@ -68,7 +66,9 @@ const startVoiceLab = async (onTranscription: (text: string, isUser: boolean) =>
     config: {
       responseModalities: [Modality.AUDIO],
       speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Fenrir' } } },
-      systemInstruction: 'You are the Durham Lords Coach. Be intense, brief. Use sports metaphors. Max 2 sentences.',
+      systemInstruction: 'You are the Durham Lords Coach. Be intense, brief. Max 2 sentences.',
+      inputAudioTranscription: {},
+      outputAudioTranscription: {},
     },
     callbacks: {
       onopen: () => {
@@ -83,6 +83,9 @@ const startVoiceLab = async (onTranscription: (text: string, isUser: boolean) =>
         processor.connect(inputAudioContext.destination);
       },
       onmessage: async (msg: LiveServerMessage) => {
+        if (msg.serverContent?.outputTranscription) onTranscription(msg.serverContent.outputTranscription.text, false);
+        else if (msg.serverContent?.inputTranscription) onTranscription(msg.serverContent.inputTranscription.text, true);
+
         const audioData = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
         if (audioData && outputAudioContext) {
           nextStartTime = Math.max(nextStartTime, outputAudioContext.currentTime);
@@ -110,9 +113,6 @@ const stopVoiceLab = () => {
   nextStartTime = 0;
 };
 
-/**
- * 3. MAIN UI
- */
 const Card = ({ children, className = "" }: { children: React.ReactNode, className?: string }) => (
   <div className={`glass-card rounded-[2rem] p-6 shadow-xl ${className}`}>{children}</div>
 );
@@ -123,9 +123,10 @@ const App = () => {
   const [metrics, setMetrics] = useState({ effort: 3, attitude: 3 });
   const [insight, setInsight] = useState("");
   const [loading, setLoading] = useState(false);
+  const [transcripts, setTranscripts] = useState<{t: string, isU: boolean}[]>([]);
 
   useEffect(() => {
-    // Reveal app
+    // Reveal app once mounted
     const loader = document.getElementById('loading-overlay');
     if (loader) loader.style.display = 'none';
   }, []);
@@ -143,18 +144,18 @@ const App = () => {
   };
 
   const generateInsight = async () => {
-    const apiKey = (process.env as any).API_KEY;
+    const apiKey = (window as any).process?.env?.API_KEY;
     if (!apiKey) { setInsight("API_KEY missing."); return; }
     setLoading(true);
     try {
       const ai = new GoogleGenAI({ apiKey });
       const res = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Durham Lords Athletics. Leadership tip for effort ${metrics.effort}/5. Max 1 sentence.`
+        contents: `Durham Lords Athletics. Leadership tip for effort ${metrics.effort}/5. One direct sentence.`
       });
       setInsight(res.text || "Hold the standard.");
     } catch {
-      setInsight("Winning is a habit. Choose yours.");
+      setInsight("Winning is a habit. So is losing. Choose yours.");
     } finally {
       setLoading(false);
     }
@@ -162,7 +163,6 @@ const App = () => {
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-100 flex flex-col max-w-md mx-auto relative overflow-hidden">
-      
       {screen === 'LOGIN' && (
         <div className="flex-1 flex flex-col justify-center p-8 z-10 space-y-10">
           <div className="text-center">
@@ -193,9 +193,9 @@ const App = () => {
                 const r = (document.getElementById('role_sel') as HTMLElement).dataset.role || 'ATHLETE';
                 if(n && j) handleLogin(n, j, r);
               }}
-              className="w-full py-5 bg-green-600 hover:bg-green-500 text-white font-black rounded-[2rem] shadow-lg neon-glow transition-all active:scale-95 mt-4"
+              className="w-full py-5 bg-green-600 hover:bg-green-500 text-white font-black rounded-[2rem] shadow-lg neon-glow transition-all active:scale-95 mt-4 uppercase text-sm"
             >
-              INITIALIZE PROTOCOL
+              Initialize System
             </button>
           </Card>
         </div>
@@ -235,14 +235,14 @@ const App = () => {
                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Effort Output</span>
                 <span className="text-4xl font-black text-green-500 italic tabular-nums">{metrics.effort}</span>
               </div>
-              <input type="range" min="1" max="5" step="0.5" value={metrics.effort} onChange={e => setMetrics({...metrics, effort: parseFloat(e.target.value)})} className="w-full appearance-none h-2 bg-slate-950 rounded-full accent-green-500" />
+              <input type="range" min="1" max="5" step="0.5" value={metrics.effort} onChange={e => setMetrics({...metrics, effort: parseFloat(e.target.value)})} className="w-full accent-green-500" />
             </div>
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Elite Attitude</span>
                 <span className="text-4xl font-black text-yellow-500 italic tabular-nums">{metrics.attitude}</span>
               </div>
-              <input type="range" min="1" max="5" step="0.5" value={metrics.attitude} onChange={e => setMetrics({...metrics, attitude: parseFloat(e.target.value)})} className="w-full appearance-none h-2 bg-slate-950 rounded-full accent-yellow-500" />
+              <input type="range" min="1" max="5" step="0.5" value={metrics.attitude} onChange={e => setMetrics({...metrics, attitude: parseFloat(e.target.value)})} className="w-full accent-yellow-500" />
             </div>
           </Card>
 
@@ -251,7 +251,14 @@ const App = () => {
               <CheckCircle size={32}/>
               <span className="text-[10px] uppercase tracking-widest">Lock In</span>
             </button>
-            <button onClick={() => setScreen('VOICE')} className="h-32 bg-slate-900 border border-slate-800 rounded-[2.5rem] font-black text-white flex flex-col items-center justify-center gap-2 active:scale-95 transition-all">
+            <button onClick={() => {
+              setTranscripts([]);
+              setScreen('VOICE');
+              startVoiceLab(
+                (t, isU) => setTranscripts(p => [...p.slice(-2), { t, isU }]),
+                (e) => { if(e) alert(e); setScreen('ATHLETE'); stopVoiceLab(); }
+              );
+            }} className="h-32 bg-slate-900 border border-slate-800 rounded-[2.5rem] font-black text-white flex flex-col items-center justify-center gap-2 active:scale-95 transition-all">
               <Mic size={32} className="text-green-500"/>
               <span className="text-[10px] uppercase tracking-widest">Voice Lab</span>
             </button>
@@ -265,7 +272,15 @@ const App = () => {
             <div className="absolute inset-0 bg-green-500/10 blur-[100px] animate-pulse rounded-full"></div>
             <div className="w-56 h-56 rounded-full border border-green-500/20 flex items-center justify-center relative bg-slate-900/30">
               <Mic size={80} className="text-green-500 drop-shadow-[0_0_20px_rgba(34,197,94,0.6)]" />
+              <div className="absolute inset-0 border-2 border-green-500/30 rounded-full animate-ping"></div>
             </div>
+          </div>
+          <div className="w-full h-32 flex flex-col justify-end gap-2 px-6">
+            {transcripts.map((t, i) => (
+              <p key={i} className={`text-sm italic ${t.isU ? 'text-slate-600' : 'text-green-400 font-black'}`}>
+                {t.isU ? 'UNIT: ' : 'COACH: '}{t.t}
+              </p>
+            ))}
           </div>
           <button onClick={() => { stopVoiceLab(); setScreen('ATHLETE'); }} className="w-full py-6 bg-slate-900 border border-slate-800 rounded-[2rem] text-slate-400 font-black uppercase text-xs tracking-widest hover:text-white transition-all">
             Terminate Session
@@ -279,7 +294,6 @@ const App = () => {
             <h1 className="text-3xl font-black italic text-white uppercase tracking-tighter">COACH<span className="text-green-500">LAB</span></h1>
             <button onClick={() => setScreen('LOGIN')} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 text-slate-500"><LogOut size={18}/></button>
           </header>
-          
           <Card className="p-0 overflow-hidden divide-y divide-slate-800/30">
             {getStorage(STORAGE_KEYS.USERS).map((u: any, i: number) => (
               <div key={i} className="flex items-center justify-between p-6">
@@ -299,8 +313,9 @@ const App = () => {
   );
 };
 
-const root = document.getElementById('root');
-if (root) {
-  createRoot(root).render(<App />);
+const container = document.getElementById('root');
+if (container) {
+  const root = createRoot(container);
+  root.render(<App />);
 }
 
