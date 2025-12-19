@@ -30,9 +30,6 @@
       .loading-pulse {
         animation: pulse-subtle 2s infinite ease-in-out;
       }
-      .mask-fade {
-        mask-image: linear-gradient(to top, black 80%, transparent 100%);
-      }
     </style>
     <script type="importmap">
 {
@@ -56,7 +53,7 @@
             LORDS<span style="color: #22c55e;">LAB</span>
           </h1>
           <div id="load-status" class="loading-pulse" style="color: #22c55e; font-size: 10px; font-weight: 900; letter-spacing: 4px; margin-top: 10px; text-transform: uppercase;">
-            Initializing Core Protocol
+            Synchronizing Systems
           </div>
           <div id="debug-log" style="margin-top: 30px; color: #ef4444; font-size: 11px; font-family: monospace; max-width: 320px; text-align: left; background: rgba(0,0,0,0.5); padding: 15px; border-radius: 12px; display: none; border: 1px solid rgba(239, 68, 68, 0.2);">
             <strong style="color: #fff; margin-bottom: 5px; display: block;">DIAGNOSTIC LOG:</strong>
@@ -71,26 +68,19 @@
         if (!log) return;
         log.style.display = 'block';
         log.innerHTML += `<div style="margin-top:4px;">> ${msg}</div>`;
-        console.error("Diagnostic:", msg);
       }
       
-      window.onerror = (m, source, lineno, colno, error) => {
-        addLog(`System Error: ${m} at line ${lineno}`);
-      };
-      
-      window.onunhandledrejection = (e) => {
-        addLog(`Link Failure: ${e.reason}`);
-      };
+      window.onerror = (m) => addLog(`Runtime Error: ${m}`);
+      window.onunhandledrejection = (e) => addLog(`Promise Error: ${e.reason}`);
 
-      // Failsafe timer
+      // Increased failsafe to 10s for slow mobile networks
       setTimeout(() => {
         const loader = document.getElementById('loading-overlay');
         if (loader && loader.style.display !== 'none') {
-          const status = document.getElementById('load-status');
-          if (status) status.innerText = "CRITICAL BOOT FAILURE";
-          addLog("Module sequence timed out. Check environment variables.");
+          document.getElementById('load-status').innerText = "CONNECTION TIMEOUT";
+          addLog("Module sequence failed to initialize. Ensure your API_KEY is set in Vercel.");
         }
-      }, 6000);
+      }, 10000);
     </script>
 
     <script type="module" src="index.tsx"></script>

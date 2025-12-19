@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { 
   Trophy, Mic, LogOut, CheckCircle, Sparkles, 
@@ -7,13 +7,13 @@ import {
 import { GoogleGenAI, Modality, Blob, LiveServerMessage } from "@google/genai";
 
 /**
- * 1. ENVIRONMENT & STORAGE
+ * 1. ENVIRONMENT POLYFILLS
  */
 if (typeof window !== 'undefined') {
   (window as any).process = (window as any).process || { env: {} };
 }
 
-const STORAGE_KEYS = { USERS: 'lords_lab_v8_prod' };
+const STORAGE_KEYS = { USERS: 'lords_lab_v9_stable' };
 const getStorage = (k: string) => {
   try {
     const data = localStorage.getItem(k);
@@ -23,7 +23,7 @@ const getStorage = (k: string) => {
 const saveStorage = (k: string, v: any) => localStorage.setItem(k, JSON.stringify(v));
 
 /**
- * 2. AI VOICE ENGINE
+ * 2. VOICE ENGINE LOGIC
  */
 let nextStartTime = 0;
 let inputAudioContext: AudioContext | null = null;
@@ -70,7 +70,7 @@ const startVoiceLab = async (onTranscription: (text: string, isUser: boolean) =>
     config: {
       responseModalities: [Modality.AUDIO],
       speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Fenrir' } } },
-      systemInstruction: 'You are the Durham Lords Elite Performance Coach. Be brief, intense, and use sports leadership metaphors. Max 2 sentences.',
+      systemInstruction: 'You are the Durham Lords Coach. Be brief, intense, and professional. Max 2 sentences.',
       inputAudioTranscription: {},
       outputAudioTranscription: {},
     },
@@ -118,7 +118,7 @@ const stopVoiceLab = () => {
 };
 
 /**
- * 3. UI COMPONENTS
+ * 3. MAIN APP
  */
 const Card = ({ children, className = "" }: { children: React.ReactNode, className?: string }) => (
   <div className={`glass-card rounded-[2rem] p-6 shadow-xl ${className}`}>{children}</div>
@@ -133,7 +133,7 @@ const App = () => {
   const [transcripts, setTranscripts] = useState<{t: string, isU: boolean}[]>([]);
 
   useEffect(() => {
-    // Reveal app
+    // Reveal app once React has mounted
     const loader = document.getElementById('loading-overlay');
     if (loader) loader.style.display = 'none';
   }, []);
@@ -152,17 +152,17 @@ const App = () => {
 
   const generateInsight = async () => {
     const apiKey = (process.env as any).API_KEY;
-    if (!apiKey) { setInsight("ERROR: API_KEY MISSING."); return; }
+    if (!apiKey) { setInsight("ERROR: API_KEY NOT FOUND."); return; }
     setLoading(true);
     try {
       const ai = new GoogleGenAI({ apiKey });
       const res = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Durham Lords Athletics. Leadership challenge for athlete with effort ${metrics.effort}/5. One direct sentence.`
+        contents: `Durham Lords Leadership Challenge. Context: Athlete effort ${metrics.effort}/5. One intense sentence.`
       });
       setInsight(res.text || "Hold the standard.");
     } catch {
-      setInsight("Winning is a habit. So is losing.");
+      setInsight("Winning is a habit. So is losing. Choose yours.");
     } finally {
       setLoading(false);
     }
@@ -172,7 +172,7 @@ const App = () => {
     <div className="min-h-screen bg-[#020617] text-slate-100 flex flex-col max-w-md mx-auto relative overflow-hidden">
       
       {screen === 'LOGIN' && (
-        <div className="flex-1 flex flex-col justify-center p-8 z-10 space-y-12 animate-in fade-in zoom-in duration-500">
+        <div className="flex-1 flex flex-col justify-center p-8 z-10 space-y-12">
           <div className="text-center">
             <h1 className="text-6xl font-black italic tracking-tighter text-white">LORDS<span className="text-green-500">LAB</span></h1>
             <p className="text-slate-500 font-bold uppercase tracking-[0.4em] text-[10px] mt-2">Elite Leadership Protocol</p>
@@ -203,14 +203,14 @@ const App = () => {
               }}
               className="w-full py-5 bg-green-600 hover:bg-green-500 text-white font-black rounded-[2rem] shadow-lg neon-glow transition-all active:scale-95 mt-4 uppercase text-sm tracking-widest"
             >
-              Initialize System
+              INITIALIZE PROTOCOL
             </button>
           </Card>
         </div>
       )}
 
       {screen === 'ATHLETE' && user && (
-        <div className="flex-1 p-6 space-y-6 overflow-y-auto pb-32 z-10 animate-in slide-in-from-right duration-300">
+        <div className="flex-1 p-6 space-y-6 overflow-y-auto pb-32 z-10">
           <header className="flex justify-between items-center py-4">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-green-600 rounded-2xl flex items-center justify-center font-black text-white shadow-xl italic">#{user.jersey}</div>
@@ -226,13 +226,13 @@ const App = () => {
 
           <Card className="bg-gradient-to-br from-green-600/10 to-transparent border-green-500/20">
             <div className="flex items-center gap-2 mb-3 text-green-400 font-black text-[10px] uppercase tracking-[0.2em]">
-              <Sparkles size={14}/> Daily Insight
+              <Sparkles size={14}/> Daily Directive
             </div>
             {insight ? (
               <p className="text-lg font-bold italic leading-tight text-white border-l-2 border-green-500 pl-4 py-1">"{insight}"</p>
             ) : (
               <button onClick={generateInsight} className="w-full py-4 text-[11px] text-green-500 font-black uppercase tracking-widest bg-green-500/5 rounded-2xl border border-green-500/10 hover:bg-green-500/10 transition-all">
-                {loading ? 'Analyzing Pulse...' : 'Sync Leadership Directive'}
+                {loading ? 'Analyzing Pulse...' : 'Sync Coach Directive'}
               </button>
             )}
           </Card>
@@ -255,7 +255,7 @@ const App = () => {
           </Card>
 
           <div className="grid grid-cols-2 gap-4">
-            <button onClick={() => alert("Daily Standard Locked.")} className="h-32 bg-green-600 rounded-[2.5rem] font-black text-white flex flex-col items-center justify-center gap-2 shadow-xl neon-glow active:scale-95 transition-all">
+            <button onClick={() => alert("Standard Locked.")} className="h-32 bg-green-600 rounded-[2.5rem] font-black text-white flex flex-col items-center justify-center gap-2 shadow-xl neon-glow active:scale-95 transition-all">
               <CheckCircle size={32}/>
               <span className="text-[10px] uppercase tracking-widest">Lock In</span>
             </button>
@@ -275,7 +275,7 @@ const App = () => {
       )}
 
       {screen === 'VOICE' && (
-        <div className="flex-1 bg-black flex flex-col items-center justify-center p-8 text-center space-y-12 z-20 animate-in zoom-in duration-500">
+        <div className="flex-1 bg-black flex flex-col items-center justify-center p-8 text-center space-y-12 z-20">
           <div className="relative">
             <div className="absolute inset-0 bg-green-500/10 blur-[100px] animate-pulse rounded-full"></div>
             <div className="w-56 h-56 rounded-full border border-green-500/20 flex items-center justify-center relative bg-slate-900/30">
@@ -283,13 +283,12 @@ const App = () => {
               <Mic size={80} className="text-green-500 drop-shadow-[0_0_20px_rgba(34,197,94,0.6)]" />
             </div>
           </div>
-          <div className="w-full h-40 flex flex-col justify-end space-y-4 overflow-hidden mask-fade px-4">
+          <div className="w-full h-40 flex flex-col justify-end space-y-4 overflow-hidden px-4">
             {transcripts.map((t, i) => (
-              <p key={i} className={`text-sm ${t.isU ? 'text-slate-600 font-bold' : 'text-green-400 font-black italic animate-in slide-in-from-bottom'}`}>
+              <p key={i} className={`text-sm ${t.isU ? 'text-slate-600 font-bold' : 'text-green-400 font-black italic'}`}>
                 {t.isU ? 'UNIT: ' : 'COACH: '}{t.t}
               </p>
             ))}
-            {transcripts.length === 0 && <p className="text-slate-800 font-black uppercase text-[10px] animate-pulse tracking-[0.4em]">Establishing Link...</p>}
           </div>
           <button onClick={() => { stopVoiceLab(); setScreen('ATHLETE'); }} className="w-full py-6 bg-slate-900 border border-slate-800 rounded-[2rem] text-slate-400 font-black uppercase text-xs tracking-widest hover:text-white transition-all">
             Terminate Session
@@ -298,31 +297,15 @@ const App = () => {
       )}
 
       {screen === 'COACH' && (
-        <div className="flex-1 p-6 space-y-8 overflow-y-auto pb-32 z-10 animate-in slide-in-from-right duration-300">
+        <div className="flex-1 p-6 space-y-8 overflow-y-auto pb-32 z-10">
           <header className="flex justify-between items-center py-4">
             <h1 className="text-3xl font-black italic text-white uppercase tracking-tighter">COACH<span className="text-green-500">LAB</span></h1>
             <button onClick={() => setScreen('LOGIN')} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 text-slate-500"><LogOut size={18}/></button>
           </header>
           
-          <div className="grid grid-cols-2 gap-4">
-            <Card className="text-center py-8">
-              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Squad Pulse</p>
-              <p className="text-5xl font-black text-green-400 italic">4.9</p>
-            </Card>
-            <Card className="text-center py-8">
-              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Locked In</p>
-              <p className="text-5xl font-black text-white italic">{getStorage(STORAGE_KEYS.USERS).length}</p>
-            </Card>
-          </div>
-
           <Card className="p-0 overflow-hidden divide-y divide-slate-800/30">
-            <div className="p-6 bg-slate-900/30">
-              <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                <Trophy size={12}/> Leadership Roster
-              </h3>
-            </div>
             {getStorage(STORAGE_KEYS.USERS).map((u: any, i: number) => (
-              <div key={i} className="flex items-center justify-between p-6 hover:bg-slate-800/20 transition-colors">
+              <div key={i} className="flex items-center justify-between p-6">
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center font-black text-slate-600 border border-slate-800 italic">#{u.jersey}</div>
                   <span className="font-bold text-lg uppercase tracking-tight italic">{u.name}</span>
@@ -333,9 +316,6 @@ const App = () => {
                 </div>
               </div>
             ))}
-            {getStorage(STORAGE_KEYS.USERS).length === 0 && (
-              <div className="p-12 text-center text-slate-700 text-[10px] font-black uppercase tracking-widest">No Active Units</div>
-            )}
           </Card>
         </div>
       )}
@@ -343,7 +323,6 @@ const App = () => {
   );
 };
 
-// --- RENDER BOOTSTRAP ---
 const container = document.getElementById('root');
 if (container) {
   const root = createRoot(container);
