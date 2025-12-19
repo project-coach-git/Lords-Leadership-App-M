@@ -53,27 +53,37 @@
           <h1 style="color: #ffffff; font-size: 32px; font-weight: 900; font-style: italic; margin: 0; letter-spacing: -1px;">
             LORDS<span style="color: #22c55e;">LAB</span>
           </h1>
-          <div class="loading-pulse" style="color: #22c55e; font-size: 10px; font-weight: 900; letter-spacing: 4px; margin-top: 10px; text-transform: uppercase;">
+          <div id="load-status" class="loading-pulse" style="color: #22c55e; font-size: 10px; font-weight: 900; letter-spacing: 4px; margin-top: 10px; text-transform: uppercase;">
             Initializing Systems
           </div>
+          <div id="debug-log" style="margin-top: 30px; color: #ef4444; font-size: 11px; font-family: monospace; max-width: 300px; text-align: left; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 8px; display: none;">
+            <strong>DIAGNOSTIC LOG:</strong><br>
+          </div>
         </div>
-        <div id="debug-log" style="position: absolute; bottom: 40px; color: #ef4444; font-size: 10px; font-family: monospace; max-width: 80%; text-align: center;"></div>
       </div>
     </div>
 
-    <!-- Script that catches module errors -->
     <script>
-      window.onerror = function(msg, url, line) {
-        const log = document.getElementById('debug-log');
-        if (log) log.innerHTML += "CRITICAL: " + msg + "<br>";
-      };
-      window.addEventListener('unhandledrejection', function(event) {
-        const log = document.getElementById('debug-log');
-        if (log) log.innerHTML += "PROMISE REJECTION: " + event.reason + "<br>";
-      });
+      // Diagnostic tracking
+      const log = document.getElementById('debug-log');
+      function addLog(msg) {
+        log.style.display = 'block';
+        log.innerHTML += "> " + msg + "<br>";
+      }
+
+      window.onerror = (m) => addLog("Global Error: " + m);
+      window.onunhandledrejection = (e) => addLog("Promise Fail: " + e.reason);
+
+      // Failsafe timer: if React doesn't clear the loader in 4s, show logs
+      setTimeout(() => {
+        const loader = document.getElementById('loading-overlay');
+        if (loader && loader.style.display !== 'none') {
+          document.getElementById('load-status').innerText = "System Hang Detected";
+          addLog("Module loading timeout. Check console.");
+        }
+      }, 4000);
     </script>
 
-    <!-- Main Entry -->
     <script type="module" src="index.tsx"></script>
   </body>
 </html>

@@ -1,25 +1,27 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { 
   Trophy, Mic, LogOut, CheckCircle, Sparkles, 
-  Zap, Shield, BarChart3, Users, ChevronRight, Activity, Flame
+  ChevronRight, Activity, Flame
 } from 'lucide-react';
 import { GoogleGenAI, Modality, Blob, LiveServerMessage } from "@google/genai";
 
 /**
- * 1. ROBUST ENVIRONMENT SETUP
+ * 1. ENVIRONMENT & STORAGE
  */
-const API_KEY = (window as any).API_KEY || (process as any).env?.API_KEY || '';
+// Ensure process.env is safely polyfilled for the browser
+if (typeof window !== 'undefined') {
+  (window as any).process = (window as any).process || { env: {} };
+}
 
-// --- STORAGE ENGINE ---
-const STORAGE_KEYS = { USERS: 'lords_lab_v5_users', CURRENT: 'lords_lab_v5_active' };
+const STORAGE_KEYS = { USERS: 'lords_lab_v6_users' };
 const getStorage = (k: string) => {
   try { return JSON.parse(localStorage.getItem(k) || '[]'); } catch { return []; }
 };
 const saveStorage = (k: string, v: any) => localStorage.setItem(k, JSON.stringify(v));
 
 /**
- * 2. AI VOICE ENGINE (GEMINI LIVE)
+ * 2. AI VOICE LOGIC (GEMINI LIVE)
  */
 let nextStartTime = 0;
 let inputAudioContext: AudioContext | null = null;
@@ -48,16 +50,17 @@ const decodePCM = async (base64: string, ctx: AudioContext) => {
 };
 
 const startVoiceLab = async (onTranscription: (text: string, isUser: boolean) => void, onEnd: (err?: string) => void) => {
-  if (!API_KEY) return onEnd("API_KEY Missing in System.");
+  const apiKey = (process.env as any).API_KEY;
+  if (!apiKey) return onEnd("API_KEY Missing.");
 
-  const ai = new GoogleGenAI({ apiKey: API_KEY });
+  const ai = new GoogleGenAI({ apiKey });
   inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
   outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
   
   try {
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (e) {
-    return onEnd("Microphone access denied.");
+    return onEnd("Mic access denied.");
   }
 
   const sessionPromise = ai.live.connect({
@@ -65,9 +68,7 @@ const startVoiceLab = async (onTranscription: (text: string, isUser: boolean) =>
     config: {
       responseModalities: [Modality.AUDIO],
       speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Fenrir' } } },
-      systemInstruction: 'You are the Durham Lords Elite Performance Coach. Be intense, brief, and focus on leadership habits. Use sports metaphors. Max 2 sentences.',
-      inputAudioTranscription: {},
-      outputAudioTranscription: {},
+      systemInstruction: 'You are the Durham Lords Coach. Be intense, brief. Use sports metaphors. Max 2 sentences.',
     },
     callbacks: {
       onopen: () => {
@@ -82,9 +83,6 @@ const startVoiceLab = async (onTranscription: (text: string, isUser: boolean) =>
         processor.connect(inputAudioContext.destination);
       },
       onmessage: async (msg: LiveServerMessage) => {
-        if (msg.serverContent?.outputTranscription) onTranscription(msg.serverContent.outputTranscription.text, false);
-        else if (msg.serverContent?.inputTranscription) onTranscription(msg.serverContent.inputTranscription.text, true);
-        
         const audioData = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
         if (audioData && outputAudioContext) {
           nextStartTime = Math.max(nextStartTime, outputAudioContext.currentTime);
@@ -113,7 +111,7 @@ const stopVoiceLab = () => {
 };
 
 /**
- * 3. UI COMPONENTS
+ * 3. MAIN UI
  */
 const Card = ({ children, className = "" }: { children: React.ReactNode, className?: string }) => (
   <div className={`glass-card rounded-[2rem] p-6 shadow-xl ${className}`}>{children}</div>
@@ -125,10 +123,9 @@ const App = () => {
   const [metrics, setMetrics] = useState({ effort: 3, attitude: 3 });
   const [insight, setInsight] = useState("");
   const [loading, setLoading] = useState(false);
-  const [transcripts, setTranscripts] = useState<{t: string, isU: boolean}[]>([]);
 
   useEffect(() => {
-    // Hide loading screen once React takes over
+    // Reveal app
     const loader = document.getElementById('loading-overlay');
     if (loader) loader.style.display = 'none';
   }, []);
@@ -146,42 +143,26 @@ const App = () => {
   };
 
   const generateInsight = async () => {
-    if (!API_KEY) { setInsight("System Error: API_KEY missing."); return; }
+    const apiKey = (process.env as any).API_KEY;
+    if (!apiKey) { setInsight("API_KEY missing."); return; }
     setLoading(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: API_KEY });
+      const ai = new GoogleGenAI({ apiKey });
       const res = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: ` Durham Lords Varsity Athletics. Give an elite leadership challenge for an athlete with effort ${metrics.effort}/5 and attitude ${metrics.attitude}/5. One direct sentence.`
+        contents: `Durham Lords Athletics. Leadership tip for effort ${metrics.effort}/5. Max 1 sentence.`
       });
       setInsight(res.text || "Hold the standard.");
     } catch {
-      setInsight("Winning is a habit. So is losing. Choose yours.");
+      setInsight("Winning is a habit. Choose yours.");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const toggleVoice = () => {
-    if (screen === 'VOICE') {
-      stopVoiceLab();
-      setScreen('ATHLETE');
-    } else {
-      setTranscripts([]);
-      setScreen('VOICE');
-      startVoiceLab(
-        (t, isU) => setTranscripts(prev => [...prev.slice(-3), { t, isU }]),
-        (err) => { if (err) alert(err); setScreen('ATHLETE'); stopVoiceLab(); }
-      );
     }
   };
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-100 flex flex-col max-w-md mx-auto relative overflow-hidden">
       
-      {/* BACKGROUND DECOR */}
-      <div className="absolute top-0 left-0 w-full h-1/2 bg-gradient-to-b from-green-500/5 to-transparent pointer-events-none" />
-
       {screen === 'LOGIN' && (
         <div className="flex-1 flex flex-col justify-center p-8 z-10 space-y-10">
           <div className="text-center">
@@ -193,17 +174,17 @@ const App = () => {
             <input id="jn" placeholder="Jersey #" className="w-full bg-slate-950/50 border border-slate-800 rounded-2xl p-5 outline-none focus:border-green-500 text-white font-bold" />
             <div className="flex gap-2 p-1 bg-slate-900 rounded-2xl border border-slate-800" id="role_sel">
               <button onClick={(e) => {
-                const parent = (e.currentTarget.parentElement as HTMLElement);
-                Array.from(parent.children).forEach(c => c.classList.remove('bg-green-600', 'text-white'));
+                const p = e.currentTarget.parentElement!;
+                Array.from(p.children).forEach(c => c.classList.remove('bg-green-600', 'text-white'));
                 e.currentTarget.classList.add('bg-green-600', 'text-white');
-                parent.dataset.role = 'ATHLETE';
-              }} className="flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all bg-green-600 text-white">Athlete</button>
+                p.dataset.role = 'ATHLETE';
+              }} className="flex-1 py-3 rounded-xl text-[10px] font-black uppercase bg-green-600 text-white">Athlete</button>
               <button onClick={(e) => {
-                const parent = (e.currentTarget.parentElement as HTMLElement);
-                Array.from(parent.children).forEach(c => c.classList.remove('bg-green-600', 'text-white'));
+                const p = e.currentTarget.parentElement!;
+                Array.from(p.children).forEach(c => c.classList.remove('bg-green-600', 'text-white'));
                 e.currentTarget.classList.add('bg-green-600', 'text-white');
-                parent.dataset.role = 'COACH';
-              }} className="flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all text-slate-400">Coach</button>
+                p.dataset.role = 'COACH';
+              }} className="flex-1 py-3 rounded-xl text-[10px] font-black uppercase text-slate-400">Coach</button>
             </div>
             <button 
               onClick={() => {
@@ -243,7 +224,7 @@ const App = () => {
               <p className="text-lg font-bold italic leading-tight text-white border-l-2 border-green-500 pl-4 py-1">"{insight}"</p>
             ) : (
               <button onClick={generateInsight} className="w-full py-4 text-[11px] text-green-500 font-black uppercase tracking-widest bg-green-500/5 rounded-2xl border border-green-500/10 hover:bg-green-500/10 transition-all">
-                {loading ? 'Analyzing Pulse...' : 'Sync Leadership Directive'}
+                {loading ? 'Analyzing...' : 'Sync Insight'}
               </button>
             )}
           </Card>
@@ -252,25 +233,25 @@ const App = () => {
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Effort Output</span>
-                <span className="text-4xl font-black text-green-500 italic tabular-nums">{metrics.effort}<span className="text-slate-700 text-lg">/5</span></span>
+                <span className="text-4xl font-black text-green-500 italic tabular-nums">{metrics.effort}</span>
               </div>
               <input type="range" min="1" max="5" step="0.5" value={metrics.effort} onChange={e => setMetrics({...metrics, effort: parseFloat(e.target.value)})} className="w-full appearance-none h-2 bg-slate-950 rounded-full accent-green-500" />
             </div>
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Elite Attitude</span>
-                <span className="text-4xl font-black text-yellow-500 italic tabular-nums">{metrics.attitude}<span className="text-slate-700 text-lg">/5</span></span>
+                <span className="text-4xl font-black text-yellow-500 italic tabular-nums">{metrics.attitude}</span>
               </div>
               <input type="range" min="1" max="5" step="0.5" value={metrics.attitude} onChange={e => setMetrics({...metrics, attitude: parseFloat(e.target.value)})} className="w-full appearance-none h-2 bg-slate-950 rounded-full accent-yellow-500" />
             </div>
           </Card>
 
           <div className="grid grid-cols-2 gap-4">
-            <button onClick={() => alert("Daily Standard Locked.")} className="h-32 bg-green-600 rounded-[2.5rem] font-black text-white flex flex-col items-center justify-center gap-2 shadow-xl neon-glow active:scale-95 transition-all">
+            <button onClick={() => alert("Locked In.")} className="h-32 bg-green-600 rounded-[2.5rem] font-black text-white flex flex-col items-center justify-center gap-2 shadow-xl neon-glow active:scale-95 transition-all">
               <CheckCircle size={32}/>
               <span className="text-[10px] uppercase tracking-widest">Lock In</span>
             </button>
-            <button onClick={toggleVoice} className="h-32 bg-slate-900 border border-slate-800 rounded-[2.5rem] font-black text-white flex flex-col items-center justify-center gap-2 active:scale-95 transition-all">
+            <button onClick={() => setScreen('VOICE')} className="h-32 bg-slate-900 border border-slate-800 rounded-[2.5rem] font-black text-white flex flex-col items-center justify-center gap-2 active:scale-95 transition-all">
               <Mic size={32} className="text-green-500"/>
               <span className="text-[10px] uppercase tracking-widest">Voice Lab</span>
             </button>
@@ -283,19 +264,10 @@ const App = () => {
           <div className="relative">
             <div className="absolute inset-0 bg-green-500/10 blur-[100px] animate-pulse rounded-full"></div>
             <div className="w-56 h-56 rounded-full border border-green-500/20 flex items-center justify-center relative bg-slate-900/30">
-              <div className="absolute inset-0 border-2 border-green-500/40 rounded-full animate-ping opacity-20"></div>
               <Mic size={80} className="text-green-500 drop-shadow-[0_0_20px_rgba(34,197,94,0.6)]" />
             </div>
           </div>
-          <div className="w-full h-40 flex flex-col justify-end space-y-4 overflow-hidden mask-fade px-4">
-            {transcripts.map((t, i) => (
-              <p key={i} className={`text-sm ${t.isU ? 'text-slate-600 font-bold' : 'text-green-400 font-black italic animate-in fade-in slide-in-from-bottom'}`}>
-                {t.isU ? 'UNIT: ' : 'COACH: '}{t.t}
-              </p>
-            ))}
-            {transcripts.length === 0 && <p className="text-slate-800 font-black uppercase text-[10px] animate-pulse tracking-[0.4em]">Listening for Uplink...</p>}
-          </div>
-          <button onClick={toggleVoice} className="w-full py-6 bg-slate-900 border border-slate-800 rounded-[2rem] text-slate-400 font-black uppercase text-xs tracking-widest hover:text-white hover:border-red-500/50 transition-all">
+          <button onClick={() => { stopVoiceLab(); setScreen('ATHLETE'); }} className="w-full py-6 bg-slate-900 border border-slate-800 rounded-[2rem] text-slate-400 font-black uppercase text-xs tracking-widest hover:text-white transition-all">
             Terminate Session
           </button>
         </div>
@@ -308,38 +280,18 @@ const App = () => {
             <button onClick={() => setScreen('LOGIN')} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 text-slate-500"><LogOut size={18}/></button>
           </header>
           
-          <div className="grid grid-cols-2 gap-4">
-            <Card className="text-center py-8">
-              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Squad Pulse</p>
-              <p className="text-5xl font-black text-green-400 italic">4.9</p>
-            </Card>
-            <Card className="text-center py-8">
-              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Check-Ins</p>
-              <p className="text-5xl font-black text-white italic">14</p>
-            </Card>
-          </div>
-
           <Card className="p-0 overflow-hidden divide-y divide-slate-800/30">
-            <div className="p-6 bg-slate-900/30">
-              <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                <Trophy size={12}/> Leadership Leaderboard
-              </h3>
-            </div>
-            {getStorage(STORAGE_KEYS.USERS).length > 0 ? getStorage(STORAGE_KEYS.USERS).map((u: any, i: number) => (
-              <div key={i} className="flex items-center justify-between p-6 hover:bg-slate-800/20 transition-colors">
+            {getStorage(STORAGE_KEYS.USERS).map((u: any, i: number) => (
+              <div key={i} className="flex items-center justify-between p-6">
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center font-black text-slate-600 border border-slate-800 italic">#{u.jersey}</div>
-                  <span className="font-bold text-lg uppercase tracking-tight italic">{u.name}</span>
+                  <span className="font-bold text-lg uppercase italic">{u.name}</span>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="text-right">
-                    <p className="font-black text-green-400 text-xl leading-none">{u.points}</p>
-                    <p className="text-[8px] font-bold text-slate-700 uppercase">Points</p>
-                  </div>
-                  <ChevronRight size={16} className="text-slate-800" />
+                <div className="text-right">
+                  <p className="font-black text-green-400 text-xl leading-none">{u.points}</p>
                 </div>
               </div>
-            )) : <div className="p-12 text-center text-slate-700 text-[10px] font-black uppercase tracking-widest">No Units Logged</div>}
+            ))}
           </Card>
         </div>
       )}
@@ -347,11 +299,8 @@ const App = () => {
   );
 };
 
-// --- RENDER BOOTSTRAP ---
-const rootElement = document.getElementById('root');
-if (rootElement) {
-  // Use innerHTML = '' to clear the loading UI before React mounts
-  const appRoot = createRoot(rootElement);
-  appRoot.render(<App />);
+const root = document.getElementById('root');
+if (root) {
+  createRoot(root).render(<App />);
 }
 
